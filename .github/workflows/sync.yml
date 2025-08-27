@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0  # 检出所有历史记录
-          persist-credentials: false
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # 配置Git身份
       - name: Set git identity
@@ -37,8 +37,8 @@ jobs:
             git checkout main
             # 创建并切换到dev分支
             git checkout -b dev
-            # 将新创建的dev分支推送到远程仓库
-            git push origin dev
+            # 将新创建的dev分支推送到远程仓库（使用token认证）
+            git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git dev
             echo "✅ 成功创建并推送dev分支到远程仓库"
           fi
 
@@ -53,13 +53,11 @@ jobs:
       # 强制将本地dev分支重置为上游master分支的状态（忽略所有本地更改和冲突）
       - name: Force reset local dev branch to match upstream master
         run: git reset --hard upstream/master
-        continue-on-error: false
 
-      # 强制将更新推送到您的fork仓库dev分支
+      # 使用token认证进行强制推送
       - name: Force push changes to fork repository
-        run: git push origin dev --force
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git dev --force
 
       # 可选的日志输出，不涉及创建issue
       - name: Log sync status
@@ -67,8 +65,6 @@ jobs:
         run: |
           echo "✅ 成功同步上游仓库更新！"
           echo "本地dev分支已被强制重置为与上游master分支完全一致"
-          # 查看有哪些更新（可选）
-          git log origin/dev..dev --oneline || echo "没有新的更新需要同步。"
 
       - name: Log sync failure
         if: ${{ failure() }}
