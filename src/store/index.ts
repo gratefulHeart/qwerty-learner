@@ -91,6 +91,8 @@ export const phoneticConfigAtom = atomForConfig('phoneticConfig', {
 
 export const isOpenDarkModeAtom = atomWithStorage('isOpenDarkModeAtom', window.matchMedia('(prefers-color-scheme: dark)').matches)
 
+export const isMobileAtom = atom(window.innerWidth < 640)
+
 export const isShowSkipAtom = atom(false)
 
 export const isInDevModeAtom = atom(false)
@@ -109,9 +111,6 @@ export const wordDictationConfigAtom = atomForConfig('wordDictationConfig', {
 })
 
 export const dismissStartCardDateAtom = atomWithStorage<Date | null>(DISMISS_START_CARD_DATE_KEY, null)
-
-// Enhanced version promotion popup state
-export const hasSeenEnhancedPromotionAtom = atomWithStorage('hasSeenEnhancedPromotion', false)
 
 // for dev test
 //   dismissStartCardDateAtom = atom<Date | null>(new Date())

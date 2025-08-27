@@ -16,13 +16,14 @@ import {
   currentChapterAtom,
   currentDictInfoAtom,
   isIgnoreCaseAtom,
+  isMobileAtom,
   isShowAnswerOnHoverAtom,
   isTextSelectableAtom,
   pronunciationIsOpenAtom,
   wordDictationConfigAtom,
 } from '@/store'
 import type { Word } from '@/typings'
-import { CTRL, getUtcStringForMixpanel } from '@/utils'
+import { CTRL, getUtcStringForMixpanel, useMixPanelWordLogUploader } from '@/utils'
 import { useSaveWordRecord } from '@/utils/db'
 import { useAtomValue } from 'jotai'
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
@@ -36,12 +37,13 @@ export default function WordComponent({ word, onFinish }: { word: Word; onFinish
   const { state, dispatch } = useContext(TypingContext)!
   const [wordState, setWordState] = useImmer<WordState>(structuredClone(initialWordState))
 
+  const isMobile = useAtomValue(isMobileAtom)
   const wordDictationConfig = useAtomValue(wordDictationConfigAtom)
   const isTextSelectable = useAtomValue(isTextSelectableAtom)
   const isIgnoreCase = useAtomValue(isIgnoreCaseAtom)
   const isShowAnswerOnHover = useAtomValue(isShowAnswerOnHoverAtom)
   const saveWordRecord = useSaveWordRecord()
-  // const wordLogUploader = useMixPanelWordLogUploader(state)
+  const wordLogUploader = useMixPanelWordLogUploader(state)
   const [playKeySound, playBeepSound, playHintSound] = useKeySounds()
   const pronunciationIsOpen = useAtomValue(pronunciationIsOpenAtom)
   const [isHoveringWord, setIsHoveringWord] = useState(false)
@@ -254,14 +256,14 @@ export default function WordComponent({ word, onFinish }: { word: Word; onFinish
     if (wordState.isFinished) {
       dispatch({ type: TypingStateActionType.SET_IS_SAVING_RECORD, payload: true })
 
-      // wordLogUploader({
-      //   headword: word.name,
-      //   timeStart: wordState.startTime,
-      //   timeEnd: wordState.endTime,
-      //   countInput: wordState.correctCount + wordState.wrongCount,
-      //   countCorrect: wordState.correctCount,
-      //   countTypo: wordState.wrongCount,
-      // })
+      wordLogUploader({
+        headword: word.name,
+        timeStart: wordState.startTime,
+        timeEnd: wordState.endTime,
+        countInput: wordState.correctCount + wordState.wrongCount,
+        countCorrect: wordState.correctCount,
+        countTypo: wordState.wrongCount,
+      })
       saveWordRecord({
         word: word.name,
         wrongCount: wordState.wrongCount,
@@ -297,7 +299,9 @@ export default function WordComponent({ word, onFinish }: { word: Word; onFinish
           <div
             onMouseEnter={() => handleHoverWord(true)}
             onMouseLeave={() => handleHoverWord(false)}
-            className={`flex items-center ${isTextSelectable && 'select-all'} justify-center ${wordState.hasWrong ? style.wrong : ''}`}
+            className={`flex items-center gap-x-0 sm:gap-x-1 ${isTextSelectable && 'select-all'} justify-center ${
+              wordState.hasWrong ? style.wrong : ''
+            }`}
           >
             {wordState.displayWord.split('').map((t, index) => {
               return <Letter key={`${index}-${t}`} letter={t} visible={getLetterVisible(index)} state={wordState.letterStates[index]} />
@@ -305,7 +309,7 @@ export default function WordComponent({ word, onFinish }: { word: Word; onFinish
           </div>
           {pronunciationIsOpen && (
             <div className="absolute -right-12 top-1/2 h-9 w-9 -translate-y-1/2 transform ">
-              <Tooltip content={`快捷键${CTRL} + J`}>
+              <Tooltip disabled={isMobile} content={`快捷键${CTRL} + J`}>
                 <WordPronunciationIcon word={word} lang={currentLanguage} ref={wordPronunciationIconRef} className="h-full w-full" />
               </Tooltip>
             </div>
