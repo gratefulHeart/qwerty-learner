@@ -1,68 +1,51 @@
-name: Sync Fork with Upstream
+name: Sync Fork Main with Upstream Master
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 每天 0点执行
-  workflow_dispatch:
+    - cron: '0 0 * * *'  # 每天 UTC 时间 0 点执行
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout target repo
+      # 检出您的fork仓库的main分支
+      - name: Checkout fork repository
         uses: actions/checkout@v3
         with:
+          ref: main
           persist-credentials: false
-          ref: main  # 指定要同步的分支
 
+      # 配置Git身份
       - name: Set git identity
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "418982+github-actions[bot]@users.noreply.github.com"
 
-      - name: Add upstream
+      # 添加原仓库作为上游仓库
+      - name: Add upstream repository
         run: git remote add upstream https://github.com/RealKai42/qwerty-learner.git
 
-      - name: Fetch upstream
+      # 获取原仓库的最新代码
+      - name: Fetch upstream changes
         run: git fetch upstream --prune
 
+      # 配置Git合并策略（解决分支分歧问题）
       - name: Configure git merge strategy
-        run: git config pull.rebase false  # 使用merge策略
-        # 可选：使用rebase策略
-        # run: git config pull.rebase true
-        # 可选：使用fast-forward only策略
-        # run: git config pull.ff only
+        run: git config pull.rebase false  # 使用merge策略，安全且稳定
 
-      - name: Detect upstream default branch
-        id: branch
-        run: |
-          UP_BRANCH=$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')
-          echo "up_branch=$UP_BRANCH" >> $GITHUB_OUTPUT
+      # 合并原仓库master分支的更新到本地main分支
+      - name: Merge upstream master into local main
+        run: git pull upstream master --no-edit
 
-      - name: Check diff
-        id: check_diff
-        run: |
-          UP_BRANCH=${{ steps.branch.outputs.up_branch }}
-          if git merge-base --is-ancestor upstream/$UP_BRANCH HEAD; then
-            echo "Already up to date."
-            echo "is_up_to_date=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          echo "is_up_to_date=false" >> $GITHUB_OUTPUT
-
-      - name: Merge upstream changes
-        if: ${{ steps.check_diff.outputs.is_up_to_date == 'false' }}
-        run: |
-          UP_BRANCH=${{ steps.branch.outputs.up_branch }}
-          git pull upstream $UP_BRANCH --no-edit
-
-      - name: Push changes
-        if: ${{ steps.check_diff.outputs.is_up_to_date == 'false' }}
+      # 将更新推送到您的fork仓库main分支
+      - name: Push changes to fork repository
         run: git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Send notification on failure
+      # 失败通知（可选）
+      - name: Send failure notification
         if: ${{ failure() }}
         uses: actions/github-script@v6
         with:
@@ -70,6 +53,23 @@ jobs:
             github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: 'Fork sync failed',
-              body: 'The automatic fork sync workflow failed. Please check the logs for details.'
+              title: '🔄 同步上游仓库失败',
+              body: '自动同步原仓库（RealKai42/qwerty-learner）master分支到本仓库main分支的工作流执行失败。请查看Actions日志了解详情。'
             })
+
+      # 成功通知（可选）
+      - name: Send success notification
+        if: ${{ success() }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // 仅在有实际更新时发送通知
+            const diff = await exec.getExecOutput('git', ['log', 'origin/main..main', '--oneline']);
+            if (diff.stdout.trim().length > 0) {
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '✅ 成功同步上游仓库更新',
+                body: '已成功从原仓库（RealKai42/qwerty-learner）master分支同步最新更新到本仓库main分支。\n\n更新内容：\n```\n' + diff.stdout + '\n```'
+              });
+            }
