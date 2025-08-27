@@ -1,0 +1,70 @@
+name: Sync mobile MobileDev with Upstream dev
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每天 UTC 时间 0 点执行
+  workflow_dispatch:  # 允许手动触发
+
+permissions:
+  contents: write  # 授予写入内容的权限
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      # 检出仓库（默认分支）
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 检出所有历史记录
+          persist-credentials: false
+
+      # 配置Git身份
+      - name: Set git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "418982+github-actions[bot]@users.noreply.github.com"
+
+      # 检查mobile_dev分支是否存在，不存在则创建
+      - name: Check and create mobile_dev branch if needed
+        run: |
+          # 尝试切换到mobile_dev分支
+          if git checkout mobile_dev 2>/dev/null; then
+            echo "✅ mobile_dev分支已存在，当前已切换到mobile_dev分支"
+          else
+            echo "❌ mobile_dev分支不存在，从main分支创建新的mobile_dev分支"
+            # 确保我们在main分支
+            git checkout main
+            # 创建并切换到mobile_dev分支
+            git checkout -b mobile_dev
+            # 将新创建的mobile_dev分支推送到远程仓库
+            git push origin mobile_dev
+            echo "✅ 成功创建并推送mobile_dev分支到远程仓库"
+          fi
+
+      # 添加原仓库作为上游仓库
+      - name: Add upstream repository
+        run: git remote add upstream https://github.com/1pone/qwerty-learner.git || echo "上游仓库已存在"
+
+      # 获取原仓库的最新代码
+      - name: Fetch upstream changes
+        run: git fetch upstream --prune
+
+      # 强制将本地mobile_dev分支重置为上游master分支的状态（忽略所有本地更改和冲突）
+      - name: Force reset local mobile_dev branch to match upstream master
+        run: git reset --hard upstream/dev
+        continue-on-error: false
+
+      # 强制将更新推送到您的fork仓库mobile_dev分支
+      - name: Force push changes to fork repository
+        run: git push origin mobile_dev --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 可选的日志输出，不涉及创建issue
+      - name: Log sync status
+        if: ${{ success() }}
+        run: |
+          echo "✅ 成功同步上游仓库更新！"
+          echo "本地mobile_dev分支已被强制重置为与上游master分支完全一致"
+          # 查看有哪些更新（可选）
