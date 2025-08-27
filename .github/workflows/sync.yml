@@ -2,18 +2,17 @@ name: Sync Fork with Upstream
 
 on:
   schedule:
-    - cron: "0 2 * * *"   # 每天凌晨 2 点执行一次
-  workflow_dispatch:       # 允许手动触发
+    - cron: '0 0 * * *'  # 每天 0点执行
+  workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout target repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           persist-credentials: false
-          fetch-depth: 0
 
       - name: Set git identity
         run: |
@@ -21,33 +20,31 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Add upstream
+        run: git remote add upstream https://github.com/RealKai42/qwerty-learner.git
+
+      - name: Fetch upstream
+        run: git fetch upstream --prune
+
+      - name: Detect upstream default branch
+        id: branch
         run: |
-          git remote add upstream https://github.com/RealKai42/qwerty-learner.git
-          git fetch upstream
+          UP_BRANCH=$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')
+          echo "up_branch=$UP_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Check diff
-        id: check_diff
         run: |
-          UPSTREAM_REV=$(git rev-parse upstream/main)
-          LOCAL_REV=$(git rev-parse origin/main)
-
-          echo "UPSTREAM_REV=$UPSTREAM_REV" >> $GITHUB_ENV
-          echo "LOCAL_REV=$LOCAL_REV" >> $GITHUB_ENV
-
-          if [ "$UPSTREAM_REV" != "$LOCAL_REV" ]; then
-            echo "has_update=true" >> $GITHUB_ENV
-          else
-            echo "has_update=false" >> $GITHUB_ENV
+          UP_BRANCH=${{ steps.branch.outputs.up_branch }}
+          if git merge-base --is-ancestor upstream/$UP_BRANCH HEAD; then
+            echo "Already up to date."
+            exit 0
           fi
 
       - name: Merge upstream changes
-        if: env.has_update == 'true'
         run: |
-          git merge upstream/main
-          
+          UP_BRANCH=${{ steps.branch.outputs.up_branch }}
+          git pull upstream $UP_BRANCH --no-edit
+
       - name: Push changes
-        if: env.has_update == 'true'
-        uses: ad-m/github-push-action@v0.8.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
+        run: git push origin HEAD:main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
