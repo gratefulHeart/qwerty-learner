@@ -1,4 +1,4 @@
-name: Sync Fork Main with Upstream Master
+name: Sync Fork Dev with Upstream Master
 
 on:
   schedule:
@@ -12,11 +12,11 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # 检出您的fork仓库的main分支
-      - name: Checkout fork repository
+      # 检出仓库（默认分支）
+      - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          ref: main
+          fetch-depth: 0  # 检出所有历史记录
           persist-credentials: false
 
       # 配置Git身份
@@ -25,25 +25,39 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "418982+github-actions[bot]@users.noreply.github.com"
 
+      # 检查dev分支是否存在，不存在则创建
+      - name: Check and create dev branch if needed
+        run: |
+          # 尝试切换到dev分支
+          if git checkout dev 2>/dev/null; then
+            echo "✅ dev分支已存在，当前已切换到dev分支"
+          else
+            echo "❌ dev分支不存在，从main分支创建新的dev分支"
+            # 确保我们在main分支
+            git checkout main
+            # 创建并切换到dev分支
+            git checkout -b dev
+            # 将新创建的dev分支推送到远程仓库
+            git push origin dev
+            echo "✅ 成功创建并推送dev分支到远程仓库"
+          fi
+
       # 添加原仓库作为上游仓库
       - name: Add upstream repository
-        run: git remote add upstream https://github.com/RealKai42/qwerty-learner.git
+        run: git remote add upstream https://github.com/RealKai42/qwerty-learner.git || echo "上游仓库已存在"
 
       # 获取原仓库的最新代码
       - name: Fetch upstream changes
         run: git fetch upstream --prune
 
-      # 配置Git合并策略
-      - name: Configure git merge strategy
-        run: git config pull.rebase false
+      # 强制将本地dev分支重置为上游master分支的状态（忽略所有本地更改和冲突）
+      - name: Force reset local dev branch to match upstream master
+        run: git reset --hard upstream/master
+        continue-on-error: false
 
-      # 合并原仓库master分支的更新到本地main分支（允许不相关历史）
-      - name: Merge upstream master into local main
-        run: git pull upstream master --no-edit --allow-unrelated-histories
-
-      # 将更新推送到您的fork仓库main分支
-      - name: Push changes to fork repository
-        run: git push origin main
+      # 强制将更新推送到您的fork仓库dev分支
+      - name: Force push changes to fork repository
+        run: git push origin dev --force
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -52,8 +66,9 @@ jobs:
         if: ${{ success() }}
         run: |
           echo "✅ 成功同步上游仓库更新！"
+          echo "本地dev分支已被强制重置为与上游master分支完全一致"
           # 查看有哪些更新（可选）
-          git log origin/main..main --oneline || echo "没有新的更新需要同步。"
+          git log origin/dev..dev --oneline || echo "没有新的更新需要同步。"
 
       - name: Log sync failure
         if: ${{ failure() }}
