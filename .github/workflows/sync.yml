@@ -2,72 +2,69 @@ name: Sync Fork Dev with Upstream Master
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 每天 UTC 时间 0 点执行
-  workflow_dispatch:  # 允许手动触发
+    - cron: '0 0 * * *'  # Run daily at UTC midnight
+  workflow_dispatch:  # Allow manual triggering
 
 permissions:
-  contents: write  # 授予写入内容的权限
+  contents: write  # Required to push code changes
+  actions: write  # Required to modify workflow files
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # 检出仓库（默认分支）
+      # Checkout repository with token for authentication
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # 检出所有历史记录
+          fetch-depth: 0  # Checkout all history
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 配置Git身份
+      # Set git identity
       - name: Set git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "418982+github-actions[bot]@users.noreply.github.com"
 
-      # 检查dev分支是否存在，不存在则创建
+      # Check if dev branch exists, create if needed
       - name: Check and create dev branch if needed
         run: |
-          # 尝试切换到dev分支
           if git checkout dev 2>/dev/null; then
-            echo "✅ dev分支已存在，当前已切换到dev分支"
+            echo "✅ dev branch exists, switched to dev branch"
           else
-            echo "❌ dev分支不存在，从main分支创建新的dev分支"
-            # 确保我们在main分支
+            echo "❌ dev branch does not exist, creating from main branch"
             git checkout main
-            # 创建并切换到dev分支
             git checkout -b dev
-            # 将新创建的dev分支推送到远程仓库（使用token认证）
             git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git dev
-            echo "✅ 成功创建并推送dev分支到远程仓库"
+            echo "✅ Successfully created and pushed dev branch"
           fi
 
-      # 添加原仓库作为上游仓库
+      # Add upstream repository
       - name: Add upstream repository
-        run: git remote add upstream https://github.com/RealKai42/qwerty-learner.git || echo "上游仓库已存在"
+        run: git remote add upstream https://github.com/RealKai42/qwerty-learner.git || echo "Upstream repository already exists"
 
-      # 获取原仓库的最新代码
+      # Fetch latest changes from upstream
       - name: Fetch upstream changes
         run: git fetch upstream --prune
 
-      # 强制将本地dev分支重置为上游master分支的状态（忽略所有本地更改和冲突）
+      # Force reset local dev branch to match upstream master
       - name: Force reset local dev branch to match upstream master
         run: git reset --hard upstream/master
 
-      # 使用token认证进行强制推送
+      # Force push changes to fork repository
       - name: Force push changes to fork repository
         run: |
           git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git dev --force
 
-      # 可选的日志输出，不涉及创建issue
+      # Log sync status
       - name: Log sync status
         if: ${{ success() }}
         run: |
-          echo "✅ 成功同步上游仓库更新！"
-          echo "本地dev分支已被强制重置为与上游master分支完全一致"
+          echo "✅ Successfully synced with upstream repository!"
+          echo "Local dev branch has been reset to match upstream master branch"
 
       - name: Log sync failure
         if: ${{ failure() }}
         run: |
-          echo "❌ 同步上游仓库失败！"
-          echo "请查看Actions日志了解详情。"
+          echo "❌ Failed to sync with upstream repository!"
+          echo "Please check Actions logs for details."
