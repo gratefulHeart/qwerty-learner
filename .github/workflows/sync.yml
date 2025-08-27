@@ -26,9 +26,12 @@ jobs:
       - name: Fetch upstream
         run: git fetch upstream --prune
 
-      - name: Check for fetch errors
-        if: ${{ failure() }}
-        run: echo "Failed to fetch upstream repository" && exit 1
+      - name: Configure git merge strategy
+        run: git config pull.rebase false  # 使用merge策略
+        # 可选：使用rebase策略
+        # run: git config pull.rebase true
+        # 可选：使用fast-forward only策略
+        # run: git config pull.ff only
 
       - name: Detect upstream default branch
         id: branch
