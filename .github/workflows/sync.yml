@@ -5,6 +5,9 @@ on:
     - cron: '0 0 * * *'  # 每天 UTC 时间 0 点执行
   workflow_dispatch:  # 允许手动触发
 
+permissions:
+  contents: write  # 授予写入内容的权限
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -30,13 +33,13 @@ jobs:
       - name: Fetch upstream changes
         run: git fetch upstream --prune
 
-      # 配置Git合并策略（解决分支分歧问题）
+      # 配置Git合并策略
       - name: Configure git merge strategy
-        run: git config pull.rebase false  # 使用merge策略，安全且稳定
+        run: git config pull.rebase false
 
-      # 合并原仓库master分支的更新到本地main分支
+      # 合并原仓库master分支的更新到本地main分支（允许不相关历史）
       - name: Merge upstream master into local main
-        run: git pull upstream master --no-edit
+        run: git pull upstream master --no-edit --allow-unrelated-histories
 
       # 将更新推送到您的fork仓库main分支
       - name: Push changes to fork repository
@@ -44,32 +47,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 失败通知（可选）
-      - name: Send failure notification
-        if: ${{ failure() }}
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: '🔄 同步上游仓库失败',
-              body: '自动同步原仓库（RealKai42/qwerty-learner）master分支到本仓库main分支的工作流执行失败。请查看Actions日志了解详情。'
-            })
-
-      # 成功通知（可选）
-      - name: Send success notification
+      # 可选的日志输出，不涉及创建issue
+      - name: Log sync status
         if: ${{ success() }}
-        uses: actions/github-script@v6
-        with:
-          script: |
-            // 仅在有实际更新时发送通知
-            const diff = await exec.getExecOutput('git', ['log', 'origin/main..main', '--oneline']);
-            if (diff.stdout.trim().length > 0) {
-              github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: '✅ 成功同步上游仓库更新',
-                body: '已成功从原仓库（RealKai42/qwerty-learner）master分支同步最新更新到本仓库main分支。\n\n更新内容：\n```\n' + diff.stdout + '\n```'
-              });
-            }
+        run: |
+          echo "✅ 成功同步上游仓库更新！"
+          # 查看有哪些更新（可选）
+          git log origin/main..main --oneline || echo "没有新的更新需要同步。"
+
+      - name: Log sync failure
+        if: ${{ failure() }}
+        run: |
+          echo "❌ 同步上游仓库失败！"
+          echo "请查看Actions日志了解详情。"
