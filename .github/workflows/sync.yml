@@ -2,69 +2,92 @@ name: Sync Fork Dev with Upstream Master
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Run daily at UTC midnight
-  workflow_dispatch:  # Allow manual triggering
+    - cron: '0 0 * * *'  # 每天 UTC 时间 0 点执行
+  workflow_dispatch:  # 允许手动触发
 
 permissions:
-  contents: write  # Required to push code changes
-  actions: write  # Required to modify workflow files
+  contents: write  # 授予写入内容的权限
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # Checkout repository with token for authentication
-      - name: Checkout repository
+      # 检出一个临时目录用于获取上游代码
+      - name: Checkout temporary directory for upstream code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Checkout all history
-          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: RealKai42/qwerty-learner
+          ref: master
+          path: upstream-code
 
-      # Set git identity
+      # 检出您的fork仓库
+      - name: Checkout your fork repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          path: your-fork
+
+      # 配置Git身份
       - name: Set git identity
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "418982+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "418982+github-actions[bot]@users.noreply.github.com"
 
-      # Check if dev branch exists, create if needed
-      - name: Check and create dev branch if needed
+      # 检查并创建dev分支（如果需要）
+      - name: Check and create dev branch
         run: |
-          if git checkout dev 2>/dev/null; then
-            echo "✅ dev branch exists, switched to dev branch"
+          cd your-fork
+          # 检查dev分支是否存在
+          if git ls-remote --heads origin dev | grep -q dev; then
+            echo "✅ dev分支已存在"
+            git checkout dev
           else
-            echo "❌ dev branch does not exist, creating from main branch"
-            git checkout main
+            echo "❌ dev分支不存在，创建新的dev分支"
             git checkout -b dev
-            git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git dev
-            echo "✅ Successfully created and pushed dev branch"
+            git push origin dev
           fi
 
-      # Add upstream repository
-      - name: Add upstream repository
-        run: git remote add upstream https://github.com/RealKai42/qwerty-learner.git || echo "Upstream repository already exists"
-
-      # Fetch latest changes from upstream
-      - name: Fetch upstream changes
-        run: git fetch upstream --prune
-
-      # Force reset local dev branch to match upstream master
-      - name: Force reset local dev branch to match upstream master
-        run: git reset --hard upstream/master
-
-      # Force push changes to fork repository
-      - name: Force push changes to fork repository
+      # 同步上游代码到dev分支（避开工作流文件）
+      - name: Sync upstream code to dev branch
         run: |
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git dev --force
+          # 定义源目录和目标目录
+          UPSTREAM_DIR="${{ github.workspace }}/upstream-code"
+          FORK_DIR="${{ github.workspace }}/your-fork"
+          
+          cd $FORK_DIR
+          
+          # 删除除了.git目录和.github/workflows目录之外的所有内容
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name '.github' -exec rm -rf {} \;
+          
+          # 如果.github/workflows目录不存在，创建它
+          mkdir -p .github/workflows
+          
+          # 从上游复制所有文件，但排除.github/workflows目录
+          rsync -av --progress $UPSTREAM_DIR/ $FORK_DIR/ --exclude='.git' --exclude='.github/workflows'
 
-      # Log sync status
+      # 提交更改
+      - name: Commit changes
+        run: |
+          cd your-fork
+          git add .
+          git commit -m "Sync with upstream repository (RealKai42/qwerty-learner@master)" || echo "没有更改需要提交"
+
+      # 推送更改到dev分支
+      - name: Push changes to dev branch
+        run: |
+          cd your-fork
+          git push origin dev
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 可选的日志输出
       - name: Log sync status
         if: ${{ success() }}
         run: |
-          echo "✅ Successfully synced with upstream repository!"
-          echo "Local dev branch has been reset to match upstream master branch"
+          echo "✅ 成功同步上游仓库更新！"
 
       - name: Log sync failure
         if: ${{ failure() }}
         run: |
-          echo "❌ Failed to sync with upstream repository!"
-          echo "Please check Actions logs for details."
+          echo "❌ 同步上游仓库失败！"
+          echo "请查看Actions日志了解详情。"
